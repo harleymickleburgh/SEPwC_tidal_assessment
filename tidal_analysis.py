@@ -12,8 +12,24 @@ import argparse
 
 
 def read_tidal_data(filename):
+    #skip the stuff at the top of the file
+    tide_data = pd.read_csv(filename, skiprows=11, sep=r'\s+', header=None)
+    
+    #Combine the date and time strings
+    datetime_str = tide_data[1] + '' + tide_data[2]
+    tide_data['Date'] = pd.to_datetime(datetime_str)
+    
+    #rename column 3 to Tide
+    tide_data = tide_data.rename(columns={3: "Tide"})
+    
+    #set index and keep Tide column
+    tide_data = tide_data.set_index('Date')
+    tide_data = tide_data[['Tide']]
 
-    return
+    #hide sensor errors
+    tide_data = tide_data.mask(tide_data['Tide'] < -300)    
+
+    return tide_data
     
 def extract_single_year_remove_mean(year, data):
 
