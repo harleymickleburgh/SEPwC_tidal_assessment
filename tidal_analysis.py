@@ -20,23 +20,31 @@ def read_tidal_data(filename):
     tide_data['Date'] = pd.to_datetime(datetime_str)
     
     #rename column 3 to Tide
-    tide_data = tide_data.rename(columns={3: "Tide"})
+    tide_data = tide_data.rename(columns={3: "Sea Level"})
     
     #converting stuff to numbers
-    tide_data['Tide'] = pd.to_numeric(tide_data['Tide'], errors= 'coerce')
+    tide_data['Sea Level'] = pd.to_numeric(tide_data['Sea Level'], errors= 'coerce')
     
     #set index and keep Tide column
     tide_data = tide_data.set_index('Date')
-    tide_data = tide_data[['Tide']]
+    tide_data = tide_data[['Sea Level']]
 
     #hide sensor errors
-    tide_data = tide_data.mask(tide_data['Tide'] < -300)    
+    tide_data = tide_data.mask(tide_data['Sea Level'] < -300)    
 
     return tide_data
     
 def extract_single_year_remove_mean(year, data):
+    #defining the time range
+    year_string_start = str(year)+"0101"
+    year_string_end = str(year)+"1231"
+    year_data = data.loc[year_string_start:year_string_end, ['Sea Level']]
+    
+    #averaging out the sea level
+    mmm = np.mean(year_data['Sea Level'])
+    year_data['Sea Level'] -= mmm
 
-    return 
+    return year_data
 
 
 def extract_section_remove_mean(start, end, data):
