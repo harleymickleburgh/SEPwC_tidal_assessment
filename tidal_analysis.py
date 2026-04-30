@@ -16,11 +16,14 @@ def read_tidal_data(filename):
     tide_data = pd.read_csv(filename, skiprows=11, sep=r'\s+', header=None)
     
     #Combine the date and time strings
-    datetime_str = tide_data[1] + '' + tide_data[2]
+    datetime_str = tide_data[1] + ' ' + tide_data[2]
     tide_data['Date'] = pd.to_datetime(datetime_str)
     
     #rename column 3 to Tide
     tide_data = tide_data.rename(columns={3: "Tide"})
+    
+    #converting stuff to numbers
+    tide_data['Tide'] = pd.to_numeric(tide_data['Tide'], errors= 'coerce')
     
     #set index and keep Tide column
     tide_data = tide_data.set_index('Date')
