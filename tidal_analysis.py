@@ -66,17 +66,28 @@ def join_data(data1, data2):
     return combined
 
 def sea_level_rise(data):
+    #remove rows where sea level data is missing
+    clean_data = data.dropna(subset=['Sea Level'])
+
     #convert the index to numbers
-    x_data = (data.index - data.index[0]).total_seconds() / (24 *3600)
-    
+    x_data = (clean_data.index - clean_data.index[0]).total_seconds() / (24 *3600)
+ 
     #regression on time(x) and sea level (y)
-    result = stats.linregress(x_data, data['Sea Level'])
+    result = stats.linregress(x_data, clean_data['Sea Level'])
 
     return result.slope, result.pvalue
 
 def tidal_analysis(data, constituents, start_datetime):
+    tide = uptide.Tides(constituents)
+    
+    #convert daetimes to seconds
+    times = (data.index - start_datetime).total_seconds().values
+    sea_level = data['Sea Level'].values
+    
+    #harmonic analysis
+    amp, pha = uptide.analysis.harmonic_analysis(tide, sea_level, times)
 
-    return
+    return amp, pha
 
 def get_longest_contiguous_data(data):
 
