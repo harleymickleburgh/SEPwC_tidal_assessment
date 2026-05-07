@@ -84,15 +84,18 @@ def tidal_analysis(data, constituents, start_datetime):
     tide = uptide.Tides(constituents) #this allows for analysis of all types of wave M2 S2 etc
     tide.set_initial_time(start_datetime)
     
-    if data.index.tz is None:
-        localized_index = data.index.tz_localize('UTC')
+    #remove missing data 
+    clean_data = data.dropna(subset=['Sea Level'])
+    sea_level = clean_data['Sea Level'].values
+
+    if clean_data.index.tz is None:
+        localized_index = clean_data.index.tz_localize('UTC')
     else:
-        localized_index = data.index
+        localized_index = clean_data.index
 
     #convert daetimes to seconds
     times = (localized_index - start_datetime).total_seconds().values
-    sea_level = data['Sea Level'].values
-    
+
     #harmonic analysis
     amp, pha = uptide.analysis.harmonic_analysis(tide, sea_level, times)
 
