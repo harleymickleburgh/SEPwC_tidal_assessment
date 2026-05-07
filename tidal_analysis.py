@@ -1,15 +1,15 @@
 """Module for analysing tidal data"""
 import argparse
-import datetime
 import os
+import datetime
+import pytz
 
 import pandas as pd
 import numpy as np
 import uptide
-import pytz
-import math
 from scipy import stats
 import matplotlib.dates as mdates
+
 
 
 def read_tidal_data(filename):
@@ -30,12 +30,12 @@ def read_tidal_data(filename):
 
     #set index but keep time and sea level column for test
     tide_data.set_index('Time', inplace=True)
-    
+
     resampled_data = tide_data[['Sea Level']].resample('h').mean()
-    
+
     resampled_data['Time'] = resampled_data.index
 
-    return resampled_data[['Sea Level', 'Time']]
+    return resampled_data
 
 def extract_single_year_remove_mean(year, data):
     """groups data from single year to calculate a yearly average"""
@@ -67,9 +67,10 @@ def extract_section_remove_mean(start, end, data):
 def join_data(data1, data2):
     """combines data to allow for easier analysis"""
     combined = pd.concat([data1, data2])
-    combined.sort_index(inplace=True)
+    combined = combined[~combined.index.duplicated(keep='first')]
+    #combined.sort_index(inplace=True)
 
-    return combined
+    return combined.sort_index()
 
 def sea_level_rise(data):
     """calculates the sea level rise from year to year"""
@@ -77,11 +78,13 @@ def sea_level_rise(data):
     clean_data = data.dropna(subset=['Sea Level'])
 
     #calculate days since first data point
-    x_data = (clean_data.index - clean_data.index[0]).total_seconds().values / 86400.0
-    y_data = clean_data['Sea Level'].values
+    #x_data = (clean_data.index - clean_data.index[0]).total_seconds().values / 86400.0
+    #y_data = clean_data['Sea Level'].values
+    x = mdates.date2num(clean_data.index)
+    y = clean_data['Sea Level']
 
     #regression for slope and intercept
-    slope, _, _, p, _ = stats.linregress(x_data, y_data)
+    slope, _, _, p, _ = stats.linregress(x, y)
 
     return slope, p
 
@@ -89,8 +92,8 @@ def tidal_analysis(data, constituents, start_datetime):
     """harmonic analysis on sea level data using specific consituents""" 
     tide = uptide.Tides(constituents) #this allows for analysis of all types of wave M2 S2 etc
     tide.set_initial_time(start_datetime)
-    
-    #remove missing data 
+
+    #remove missing data
     clean_data = data.dropna(subset=['Sea Level'])
     sea_level = clean_data['Sea Level'].values
 
@@ -109,8 +112,22 @@ def tidal_analysis(data, constituents, start_datetime):
 
 def get_longest_contiguous_data(data):
     """finds longest time with continous data"""
+    #calculate time difference between rows
+    time_diffs = data.index.to_series().diff()
 
-    return
+    #identify gaps
+    gaps = time_diffs != pd.Timedelta(hours=1)
+
+    #ignore gaps in first row
+    gaps.iloc[0] = False
+
+    #create groups of the continous data
+    group_ids = gaps.cumsum()
+
+    #identify largest group
+    longest_group_id = group_ids.value_counts().idxmax()
+
+    return data[group_ids == longest_group_id]
 
 
 def main(args_list=None):
@@ -139,9 +156,11 @@ def main(args_list=None):
         else:
             combined_data = join_data(combined_data, data)
     if combined_data is not None:
-        slope, p_value = sea_level_rise(combined_data)
+        slope, _ = sea_level_rise(combined_data)
         if args.verbose:
-            print(f"The calculated sea level rise slope is: {slope:.2e} and the p-value is: {p_value:.2e}")
+            print(f"The calculated sea level rise slope is: {slope:.2e},"
+                  " and the p-value is: {p_value:.2e}")
 
 if __name__ == '__main__':
     main()
+_ =(datetime.datetime, pytz.timezone)
