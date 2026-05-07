@@ -1,14 +1,15 @@
 """Module for analysing tidal data"""
-import pandas as pd
+import argparse
 import datetime
 import os
+
+import pandas as pd
 import numpy as np
 import uptide
 import pytz
 import math
 from scipy import stats
 import matplotlib.dates as mdates
-import argparse
 
 
 def read_tidal_data(filename):
@@ -113,6 +114,7 @@ def get_longest_contiguous_data(data):
 
 
 def main(args_list=None):
+    """processing the data from the cmd line"""
 
     parser = argparse.ArgumentParser(
                      prog="UK Tidal analysis",
@@ -127,10 +129,19 @@ def main(args_list=None):
                     help="Print progress")
 
     args = parser.parse_args(args_list)
-    dirname = args.directory
-    verbose = args.verbose
-
-    print("Add your code here to do things!")
+    files = sorted([os.path.join(args.directory, f)
+                    for f in os.listdir(args.directory) if f.endswith('.txt')])
+    combined_data = None
+    for file_path in files:
+        data = read_tidal_data(file_path)
+        if combined_data is None:
+            combined_data = data
+        else:
+            combined_data = join_data(combined_data, data)
+    if combined_data is not None:
+        slope, p_value = sea_level_rise(combined_data)
+        if args.verbose:
+            print(f"The calculated sea level rise slope is: {slope:.2e} and the p-value is: {p_value:.2e}")
 
 if __name__ == '__main__':
     main()
