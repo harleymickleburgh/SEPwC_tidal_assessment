@@ -63,7 +63,7 @@ def extract_section_remove_mean(start, end, data):
 
 def join_data(data1, data2):
     combined = pd.concat([data1, data2])
-    combined = combined.sort_index()
+    combined.sort_index(inplace=True)
 
     return combined
 
