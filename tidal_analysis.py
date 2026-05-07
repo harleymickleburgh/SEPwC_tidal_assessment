@@ -17,7 +17,7 @@ def read_tidal_data(filename):
 
     #Combine the date and time strings
     datetime_str = tide_data[1] + ' ' + tide_data[2]
-    tide_data['Date'] = pd.to_datetime(datetime_str)
+    tide_data['Time'] = pd.to_datetime(datetime_str)
 
     #rename column 3 to Sea Level
     tide_data = tide_data.rename(columns={3: "Sea Level"})
@@ -25,9 +25,11 @@ def read_tidal_data(filename):
     #converting stuff to numbers
     tide_data['Sea Level'] = pd.to_numeric(tide_data['Sea Level'], errors= 'coerce')
 
+    #set index but keep time and sea level column for test
+    tide_data.set_index('Time', inplace=True, drop=False)
+
     #set index and keep Sea Level column
-    tide_data = tide_data.set_index('Date')
-    tide_data = tide_data[['Sea Level']]
+    tide_data = tide_data[['Sea Level', 'Time']]
 
     #hide sensor errors
     tide_data = tide_data.mask(tide_data['Sea Level'] < -300)
@@ -70,7 +72,7 @@ def sea_level_rise(data):
     clean_data = data.dropna(subset=['Sea Level'])
 
     #convert the index to numbers
-    x_data = (clean_data.index - clean_data.index[0]).total_seconds() / (24 *3600)
+    x_data = (clean_data.index - clean_data.index[0]).total_seconds() / 86400
  
     #regression on time(x) and sea level (y)
     result = stats.linregress(x_data, clean_data['Sea Level'])
@@ -78,10 +80,17 @@ def sea_level_rise(data):
     return result.slope, result.pvalue
 
 def tidal_analysis(data, constituents, start_datetime):
-    tide = uptide.Tides(constituents)
+    """harmonic analysis on sea level data using specific consituents""" 
+    tide = uptide.Tides(constituents) #this allows for analysis of all types of wave M2 S2 etc
+    tide.set_initial_time(start_datetime)
     
+    if data.index.tz is None:
+        localized_index = data.index.tz_localize('UTC')
+    else:
+        localized_index = data.index
+
     #convert daetimes to seconds
-    times = (data.index - start_datetime).total_seconds().values
+    times = (localized_index - start_datetime).total_seconds().values
     sea_level = data['Sea Level'].values
     
     #harmonic analysis
