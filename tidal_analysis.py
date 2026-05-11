@@ -105,29 +105,6 @@ def tidal_analysis(data, constituents, start_datetime):
     
     return amp * f_factors, pha
 
-def predict_tide(data, constituents, start_datetime, amplitudes, phases):
-    """predicting the tide using amp and pha"""
-    tide =uptide.Tides(constituents)
-    tide.set_initial_time(start_datetime)
-
-    if data.index.tz is None:
-        localized_index = data.index.tz_localize(pytz.utc)
-    else:
-        localized_index = data.index.tz_convert(pytz.utc)
-
-    times = (localized_index - start_datetime).total_seconds().values
-
-    predictions = tide.predict(times, amplitudes, phases)
-
-    return predictions
-
-def correct_tides(data, predictions):
-    """subtracts the predicted from observed to find surges"""
-    corrected = data.copy()
-    corrected['Sea Level'] = corrected['Sea Level'] - predictions
-
-    return corrected
-
 def get_longest_contiguous_data(data):
     """finds longest time with continous data"""
     #calculate time difference between rows
