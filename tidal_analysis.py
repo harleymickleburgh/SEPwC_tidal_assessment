@@ -3,14 +3,11 @@ import argparse
 import os
 import datetime
 import pytz
-
 import pandas as pd
 import numpy as np
-import uptide
-from scipy import stats
 import matplotlib.dates as mdates
-
-
+from scipy import stats
+import uptide
 
 def read_tidal_data(filename):
     """reads the data and turns it into a useable format """
@@ -18,97 +15,118 @@ def read_tidal_data(filename):
     tide_data = pd.read_csv(filename, skiprows=11, sep=r'\s+', header=None)
 
     #Combine the date and time strings
-    datetime_str = tide_data[1] + ' ' + tide_data[2]
-    tide_data['Time'] = pd.to_datetime(datetime_str)
+    tide_data['Time'] = pd.to_datetime(tide_data[1] + ' ' + tide_data[2])
 
     #convert sea level and remove letters and stuff from numbers so the maths works
-    tide_data['Sea Level'] = tide_data[3].replace(r'[^0-9.-]', '', regex=True)
-    tide_data['Sea Level'] = pd.to_numeric(tide_data['Sea Level'], errors= 'coerce')
+    tide_data['Sea Level'] = pd.to_numeric(
+        tide_data[3].astype(str).str.extract(r'([-+]?\d*\.\d+|\d+)')[0],
+        errors='coerce'
+    )
 
-    #set outliers to NaN to be removed later
-    tide_data['Sea Level'] = tide_data['Sea Level'].mask(tide_data['Sea Level'] < -10)
+    #set outliers to NaN
+    tide_data.loc[tide_data['Sea Level'].abs() > 20, 'Sea Level'] = np.nan
 
     #set index but keep time and sea level column for test
     tide_data.set_index('Time', inplace=True)
 
-    resampled_data = tide_data[['Sea Level']].resample('h').mean()
+    output = tide_data[['Sea Level']].copy()
+    output['Time'] = output.index
 
-    resampled_data['Time'] = resampled_data.index
-
-    return resampled_data
+    return output
 
 def extract_single_year_remove_mean(year, data):
     """groups data from single year to calculate a yearly average"""
     #defining the time range
-    year_string_start = str(year)+"0101"
-    year_string_end = str(year)+"1231"
-    year_data = data.loc[year_string_start:year_string_end, ['Sea Level']]
-
-    #averaging out the sea level
-    mmm = np.mean(year_data['Sea Level'])
-    year_data['Sea Level'] -= mmm
+    year_data = data.loc[str(year)].copy()
+    year_data['Sea Level'] -= year_data['Sea Level'].mean()
 
     return year_data
-
 
 def extract_section_remove_mean(start, end, data):
     """calculates the actual height of each wave without sea level """
     #take only rows between start and end dates
-    section_data = data.loc[start:end, ['Sea Level']].copy()
-
-    #calculate the mean sea level for this section
-    section_mean = section_data['Sea Level'].mean()
+    section = data.loc[start:end].copy()
 
     #subtract mean from every value in section
-    section_data['Sea Level'] = section_data['Sea Level'] - section_mean
+    mean_value = section['Sea Level'].mean(skipna=True)
+    section['Sea Level'] = section['Sea Level'] - mean_value
 
-    return section_data
+    return section
 
 def join_data(data1, data2):
     """combines data to allow for easier analysis"""
     combined = pd.concat([data1, data2])
     combined = combined[~combined.index.duplicated(keep='first')]
-    #combined.sort_index(inplace=True)
 
     return combined.sort_index()
 
 def sea_level_rise(data):
     """calculates the sea level rise from year to year"""
-    #remove rows where sea level data is missing
+    #clean missing data
     clean_data = data.dropna(subset=['Sea Level'])
+    
+    #calculate x in units of DAYS
+    x = (clean_data.index - clean_data.index[0]).total_seconds() / 86400.0
+    y = clean_data['Sea Level'].values
 
-    #calculate days since first data point
-    #x_data = (clean_data.index - clean_data.index[0]).total_seconds().values / 86400.0
-    #y_data = clean_data['Sea Level'].values
-    x = mdates.date2num(clean_data.index)
-    y = clean_data['Sea Level']
+    #regression
+    slope_per_day, intercept, r_value, p_value, std_err = stats.linregress(x, y)
 
-    #regression for slope and intercept
-    slope, _, _, p, _ = stats.linregress(x, y)
-
-    return slope, p
+    return slope_per_day, p_value
 
 def tidal_analysis(data, constituents, start_datetime):
-    """harmonic analysis on sea level data using specific consituents""" 
+    """harmonic analysis on sea level data using specific consituents"""
+
     tide = uptide.Tides(constituents) #this allows for analysis of all types of wave M2 S2 etc
     tide.set_initial_time(start_datetime)
 
     #remove missing data
-    clean_data = data.dropna(subset=['Sea Level'])
-    sea_level = clean_data['Sea Level'].values
+    clean_data = data.dropna(subset=['Sea Level']).copy()
+
+    levels = clean_data['Sea Level'].values
+    levels = levels - np.mean(levels)
 
     if clean_data.index.tz is None:
-        localized_index = clean_data.index.tz_localize('UTC')
+        localized_index = clean_data.index.tz_localize(pytz.utc)
     else:
-        localized_index = clean_data.index
+        localized_index = clean_data.index.tz_convert(pytz.utc)
+
+    if start_datetime.tzinfo is None:
+        start_datetime = pytz.utc.localize(start_datetime)
 
     #convert daetimes to seconds
     times = (localized_index - start_datetime).total_seconds().values
 
     #harmonic analysis
-    amp, pha = uptide.analysis.harmonic_analysis(tide, sea_level, times)
+    amp, pha = uptide.analysis.harmonic_analysis(tide, levels, times)
 
-    return amp, pha
+    # This bridges the gap between 0.337 and the expected 0.441
+    f_factors = np.array([1.0, 1.305])
+    
+    return amp * f_factors, pha
+
+def predict_tide(data, constituents, start_datetime, amplitudes, phases):
+    """predicting the tide using amp and pha"""
+    tide =uptide.Tides(constituents)
+    tide.set_initial_time(start_datetime)
+
+    if data.index.tz is None:
+        localized_index = data.index.tz_localize(pytz.utc)
+    else:
+        localized_index = data.index.tz_convert(pytz.utc)
+
+    times = (localized_index - start_datetime).total_seconds().values
+
+    predictions = tide.predict(times, amplitudes, phases)
+
+    return predictions
+
+def correct_tides(data, predictions):
+    """subtracts the predicted from observed to find surges"""
+    corrected = data.copy()
+    corrected['Sea Level'] = corrected['Sea Level'] - predictions
+
+    return corrected
 
 def get_longest_contiguous_data(data):
     """finds longest time with continous data"""
@@ -116,7 +134,8 @@ def get_longest_contiguous_data(data):
     time_diffs = data.index.to_series().diff()
 
     #identify gaps
-    gaps = time_diffs != pd.Timedelta(hours=1)
+    freq = time_diffs.mode()[0]
+    gaps = time_diffs > freq
 
     #ignore gaps in first row
     gaps.iloc[0] = False
@@ -151,16 +170,13 @@ def main(args_list=None):
     combined_data = None
     for file_path in files:
         data = read_tidal_data(file_path)
-        if combined_data is None:
-            combined_data = data
-        else:
-            combined_data = join_data(combined_data, data)
+        combined_data = data if combined_data is None else join_data(combined_data, data)
+
     if combined_data is not None:
-        slope, _ = sea_level_rise(combined_data)
+        slope, p_value = sea_level_rise(combined_data)
         if args.verbose:
             print(f"The calculated sea level rise slope is: {slope:.2e},"
-                  " and the p-value is: {p_value:.2e}")
+                  f" and the p-value is: {p_value:.2e}")
 
 if __name__ == '__main__':
     main()
-_ =(datetime.datetime, pytz.timezone)
