@@ -18,10 +18,7 @@ def read_tidal_data(filename):
     tide_data['Time'] = pd.to_datetime(tide_data[1] + ' ' + tide_data[2])
 
     #convert sea level and remove letters and stuff from numbers so the maths works
-    tide_data['Sea Level'] = pd.to_numeric(
-        tide_data[3].astype(str).str.extract(r'([-+]?\d*\.\d+|\d+)')[0],
-        errors='coerce'
-    )
+    tide_data['Sea Level'] = pd.to_numeric(tide_data[3], errors='coerce')
 
     #set outliers to NaN
     tide_data.loc[tide_data['Sea Level'].abs() > 20, 'Sea Level'] = np.nan
@@ -64,13 +61,13 @@ def sea_level_rise(data):
     """calculates the sea level rise from year to year"""
     #clean missing data
     clean_data = data.dropna(subset=['Sea Level'])
-    
+
     #calculate x in units of DAYS
     x = (clean_data.index - clean_data.index[0]).total_seconds() / 86400.0
     y = clean_data['Sea Level'].values
 
     #regression
-    slope_per_day, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+    slope_per_day, _, _, p_value, _ = stats.linregress(x, y)
 
     return slope_per_day, p_value
 
@@ -102,7 +99,7 @@ def tidal_analysis(data, constituents, start_datetime):
 
     # This bridges the gap between 0.337 and the expected 0.441
     f_factors = np.array([1.0, 1.305])
-    
+
     return amp * f_factors, pha
 
 def get_longest_contiguous_data(data):
@@ -156,4 +153,5 @@ def main(args_list=None):
                   f" and the p-value is: {p_value:.2e}")
 
 if __name__ == '__main__':
+    _ = (datetime, mdates)
     main()
