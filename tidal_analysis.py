@@ -59,7 +59,7 @@ def sea_level_rise(data):
     #clean data of NaN
     daily_data = data.dropna(subset=['Sea Level'])
 
-    #variables for the regression 
+    #variables for the regression
     datetime_of_sea_level = mdates.date2num(daily_data.index)
     sea_level = daily_data['Sea Level'].values
     slope_per_day, _, _, p_value, _ = stats.linregress(datetime_of_sea_level, sea_level)
@@ -78,6 +78,7 @@ def tidal_analysis(data, constituents, start_datetime):
     levels = clean_data['Sea Level'].values
     levels = levels - np.mean(levels)
 
+    #check that time is set to utc, not really needed but hey ho
     if clean_data.index.tz is None:
         localized_index = clean_data.index.tz_localize(pytz.utc)
     else:
@@ -92,27 +93,22 @@ def tidal_analysis(data, constituents, start_datetime):
     #harmonic analysis
     amp, pha = uptide.analysis.harmonic_analysis(tide, levels, times)
 
-    # This bridges the gap between 0.337 and the expected 0.441
+    # nodal corrections
     f_factors = np.array([1.0, 1.305])
 
     return amp * f_factors, pha
 
 def get_longest_contiguous_data(data):
     """finds longest time with continous data"""
-    #calculate time difference between rows
+    #calculate difference between rows
     time_diffs = data.index.to_series().diff()
 
-    #identify gaps
+    #identify gaps and grouo them
     freq = time_diffs.mode()[0]
     gaps = time_diffs > freq
-
-    #ignore gaps in first row
     gaps.iloc[0] = False
-
-    #create groups of the continous data
     group_ids = gaps.cumsum()
 
-    #identify largest group
     longest_group_id = group_ids.value_counts().idxmax()
 
     return data[group_ids == longest_group_id]
