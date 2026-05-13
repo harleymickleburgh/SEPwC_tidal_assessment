@@ -11,25 +11,23 @@ import uptide
 
 def read_tidal_data(filename):
     """reads the data and turns it into a useable format """
-    #skip the stuff at the top of the file
+    #skip the stuff at the top combine date and time
     tide_data = pd.read_csv(filename, skiprows=11, sep=r'\s+', header=None)
-
-    #Combine the date and time strings
     tide_data['Time'] = pd.to_datetime(tide_data[1] + ' ' + tide_data[2])
 
-    #convert sea level and remove letters and stuff from numbers so the maths works
-    tide_data['Sea Level'] = pd.to_numeric(tide_data[3], errors='coerce')
+    #setup and clean sea level, keep T remove NM
+    sea_level_col = tide_data[3].astype(str)
+    clean_sea_level = sea_level_col.str.replace('T', '', case = False)
+    tide_data['Sea Level'] = pd.to_numeric(clean_sea_level, errors = 'coerce')
 
     #set outliers to NaN
     tide_data.loc[tide_data['Sea Level'].abs() > 20, 'Sea Level'] = np.nan
 
-    #set index but keep time and sea level column for test
+    #set index
     tide_data.set_index('Time', inplace=True)
+    tide_data['Time'] = tide_data.index
 
-    output = tide_data[['Sea Level']].copy()
-    output['Time'] = output.index
-
-    return output
+    return tide_data[['Sea Level', 'Time']]
 
 def extract_single_year_remove_mean(year, data):
     """groups data from single year to calculate a yearly average"""
@@ -53,31 +51,28 @@ def extract_section_remove_mean(start, end, data):
 def join_data(data1, data2):
     """combines data to allow for easier analysis"""
     combined = pd.concat([data1, data2])
-    combined = combined[~combined.index.duplicated(keep='first')]
 
     return combined.sort_index()
 
 def sea_level_rise(data):
     """calculates the sea level rise from year to year"""
-    #clean missing data
-    clean_data = data.dropna(subset=['Sea Level'])
+    #clean data of NaN
+    daily_data = data.dropna(subset=['Sea Level'])
 
-    #calculate x in units of DAYS
-    x = (clean_data.index - clean_data.index[0]).total_seconds() / 86400.0
-    y = clean_data['Sea Level'].values
-
-    #regression
-    slope_per_day, _, _, p_value, _ = stats.linregress(x, y)
+    #variables for the regression 
+    datetime_of_sea_level = mdates.date2num(daily_data.index)
+    sea_level = daily_data['Sea Level'].values
+    slope_per_day, _, _, p_value, _ = stats.linregress(datetime_of_sea_level, sea_level)
 
     return slope_per_day, p_value
 
 def tidal_analysis(data, constituents, start_datetime):
     """harmonic analysis on sea level data using specific consituents"""
-
-    tide = uptide.Tides(constituents) #this allows for analysis of all types of wave M2 S2 etc
+    #activate uptide to allow for calculations
+    tide = uptide.Tides(constituents)
     tide.set_initial_time(start_datetime)
 
-    #remove missing data
+    #clean data of NaN
     clean_data = data.dropna(subset=['Sea Level']).copy()
 
     levels = clean_data['Sea Level'].values
