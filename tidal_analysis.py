@@ -109,6 +109,19 @@ def get_longest_contiguous_data(data):
 
     return data[group_ids == longest_group_id]
 
+def tidal_height_prediction(constituents, amp, pha, start_datetime, days_to_predict=7):
+    """predicts future sea level based on current data"""
+    tide = uptide.Tides(constituents)
+    tide.set_initial_time(start_datetime)
+
+    #hourly prediction points
+    hours = np.arange(0, days_to_predict * 24)
+    seconds = hours * 3600
+
+    predicted_heights = tide.predict(tide, amp, pha, seconds) #pylint: disable=no-member
+    future_dates = [start_datetime + datetime.timedelta(hours=int(h)) for h in hours]
+
+    return future_dates, predicted_heights
 
 def main(args_list=None):
     """processing the data from the cmd line"""
@@ -124,6 +137,10 @@ def main(args_list=None):
                     action='store_true',
                     default=False,
                     help="Print progress")
+    parser.add_argument('-p', '--predict',
+                        type=int,
+                        metavar='DAYS',
+                        help="predict the tide for a set number of days")
 
     args = parser.parse_args(args_list)
     files = sorted([os.path.join(args.directory, f)
@@ -143,5 +160,19 @@ def main(args_list=None):
             print(f"The calculated sea level rise is: {rise_mm_year:.2f}mm per year.")
             print(f"The p-value is: {p_value:.2e}")
 
+        if args.predict:
+            consts = ['M2', 'S2']
+            start_time = combined_data.index[-1]
+            print(f"\nGenerating {args.predict}-day prediction starting from {start_time}...")
+
+            #retrieve the constants
+            amp, pha = tidal_analysis(combined_data, consts, start_time)
+
+            dates, heights = tidal_height_prediction(consts, amp, pha, start_time, args.predict)
+
+            print("Time         | Predicted Height (m)")
+            print("-----------------------------------")
+            for d, h in zip(dates[:10], heights[:10]):
+                print(f"{d.strftime('%Y-%m-%d %H:%M')} | {h:+.3f}")
 if __name__ == '__main__':
     main()
