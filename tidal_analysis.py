@@ -118,10 +118,31 @@ def tidal_height_prediction(constituents, amp, pha, start_datetime, days_to_pred
     hours = np.arange(0, days_to_predict * 24)
     seconds = hours * 3600
 
-    predicted_heights = tide.predict(tide, amp, pha, seconds) #pylint: disable=no-member
+    predicted_heights = np.zeros(len(seconds))
+    for i, con_name in enumerate(constituents):
+        con = tide.constituents[con_name] #pylint: disable=no-member
+        phase_rad = np.radians(pha[i])
+        predicted_heights += amp[i] * np.cos(con.speed * seconds +phase_rad)
+
     future_dates = [start_datetime + datetime.timedelta(hours=int(h)) for h in hours]
 
     return future_dates, predicted_heights
+
+def run_prediction_mode(args, combined_data):
+    """Helper to handle the prediction and reduce variables on main"""
+    consts = ['M2', 'S2']
+    raw_start = combined_data.index[-1]
+    start_time = raw_start.to_pydatetime() if hasattr(raw_start, 'to_pydatetime') else raw_start
+
+    print(f"\nGenerating {args.predict}-day prediction starting from {start_time}...")
+
+    amp, pha = tidal_analysis(combined_data, consts, start_time)
+    dates, heights = tidal_height_prediction(consts, amp, pha, start_time, args.predict)
+
+    print(f"{'Time':<20} | {'Height (m)':<12}")
+    print("-" * 35)
+    for d, h in zip(dates[:10], heights[:10]):
+        print(f"{d.strftime('%Y-%m-%d %H:%M'):<20} | {h:+.3f}")
 
 def main(args_list=None):
     """processing the data from the cmd line"""
@@ -161,18 +182,7 @@ def main(args_list=None):
             print(f"The p-value is: {p_value:.2e}")
 
         if args.predict:
-            consts = ['M2', 'S2']
-            start_time = combined_data.index[-1]
-            print(f"\nGenerating {args.predict}-day prediction starting from {start_time}...")
+            run_prediction_mode(args, combined_data)
 
-            #retrieve the constants
-            amp, pha = tidal_analysis(combined_data, consts, start_time)
-
-            dates, heights = tidal_height_prediction(consts, amp, pha, start_time, args.predict)
-
-            print("Time         | Predicted Height (m)")
-            print("-----------------------------------")
-            for d, h in zip(dates[:10], heights[:10]):
-                print(f"{d.strftime('%Y-%m-%d %H:%M')} | {h:+.3f}")
 if __name__ == '__main__':
     main()
