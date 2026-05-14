@@ -1,7 +1,7 @@
 """Module for analysing tidal data"""
+import datetime
 import argparse
 import os
-import datetime
 import pytz
 import pandas as pd
 import numpy as np
@@ -15,15 +15,12 @@ def read_tidal_data(filename):
     tide_data = pd.read_csv(filename, skiprows=11, sep=r'\s+', header=None)
     tide_data['Time'] = pd.to_datetime(tide_data[1] + ' ' + tide_data[2])
 
-    #setup and clean sea level, keep T remove NM
+    #setup and clean sea level, T flags are still valid data
     sea_level_col = tide_data[3].astype(str)
     clean_sea_level = sea_level_col.str.replace('T', '', case = False)
     tide_data['Sea Level'] = pd.to_numeric(clean_sea_level, errors = 'coerce')
-
-    #set outliers to NaN
     tide_data.loc[tide_data['Sea Level'].abs() > 20, 'Sea Level'] = np.nan
 
-    #set index
     tide_data.set_index('Time', inplace=True)
     tide_data['Time'] = tide_data.index
 
@@ -39,7 +36,6 @@ def extract_single_year_remove_mean(year, data):
 
 def extract_section_remove_mean(start, end, data):
     """calculates the actual height of each wave without sea level """
-    #take only rows between start and end dates
     section = data.loc[start:end].copy()
 
     #subtract mean from every value in section
@@ -59,7 +55,7 @@ def sea_level_rise(data):
     #clean data of NaN
     daily_data = data.dropna(subset=['Sea Level'])
 
-    #variables for the regression
+    #variables and regression
     datetime_of_sea_level = mdates.date2num(daily_data.index)
     sea_level = daily_data['Sea Level'].values
     slope_per_day, _, _, p_value, _ = stats.linregress(datetime_of_sea_level, sea_level)
@@ -78,7 +74,7 @@ def tidal_analysis(data, constituents, start_datetime):
     levels = clean_data['Sea Level'].values
     levels = levels - np.mean(levels)
 
-    #check that time is set to utc, not really needed but hey ho
+    #check that time is set to utc, not really needed
     if clean_data.index.tz is None:
         localized_index = clean_data.index.tz_localize(pytz.utc)
     else:
@@ -139,10 +135,13 @@ def main(args_list=None):
 
     if combined_data is not None:
         slope, p_value = sea_level_rise(combined_data)
+        rise_mm_year = slope * 365.25 * 1000
+        now = datetime.datetime.now()
+
         if args.verbose:
-            print(f"The calculated sea level rise slope is: {slope:.2e},"
-                  f" and the p-value is: {p_value:.2e}")
+            print(f"Analysis run at: {now}")
+            print(f"The calculated sea level rise is: {rise_mm_year:.2f}mm per year.")
+            print(f"The p-value is: {p_value:.2e}")
 
 if __name__ == '__main__':
-    _ = (datetime, mdates)
     main()
